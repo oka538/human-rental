@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Avatar Trip: Mirror Test</title>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+    <style>
+        body { margin: 0; background: #222; color: white; font-family: sans-serif; text-align: center; }
+        
+        /* タイトルとボタンのエリア */
+        .header { padding: 20px; }
+        
+        /* 画面を左右に分けるレイアウト */
+        .container { 
+            display: flex; 
+            flex-direction: row;
+            justify-content: center; 
+            align-items: center; 
+            height: 70vh; /* 高さを調整 */
+            gap: 20px; 
+            padding: 20px;
+        }
+        
+        /* ビデオの枠 */
+        .video-box { 
+            width: 45%; 
+            height: 100%; 
+            border: 3px solid gray; 
+            position: relative; 
+            background: black;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* 自分のカメラ（青枠） */
+        #local-player { border-color: cyan; }
+        /* 相手のカメラ（赤枠） */
+        #remote-player { border-color: red; }
+
+        p { 
+            position: absolute; top: 10px; left: 10px; 
+            background: rgba(0,0,0,0.7); padding: 5px 10px; 
+            margin: 0; z-index: 10; border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🎥 カメラ通信テスト</h1>
+        <button id="join-btn" style="font-size:20px; padding:10px 30px; cursor: pointer;">スタート！</button>
+    </div>
+
+    <div class="container">
+        <div id="local-player" class="video-box">
+            <p>🔵 自分のカメラ (Mac)</p>
+        </div>
+
+        <div id="remote-player" class="video-box">
+            <p>🔴 相手のカメラ (スマホ)</p>
+        </div>
+    </div>
+
+    <script>
+        const APP_ID = '543aafbc0b32443a877636d728d9d0f9';
+        const CHANNEL = 'test_channel';
+        const TOKEN = null;
+
+        const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        let localTracks = { videoTrack: null, audioTrack: null };
+
+        document.getElementById("join-btn").onclick = async function () {
+            try {
+                // ボタンを連打できないようにする
+                document.getElementById("join-btn").disabled = true;
+                document.getElementById("join-btn").innerText = "起動中...";
+
+                // 1. 自分のカメラを取得（★エラーが起きても止まらないように安全装置を追加！）
+                try {
+                    localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                    localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack({
+                        encoderConfig: {
+                            width: { ideal: 2880 },
+                            height: { ideal: 1440 },
+                            frameRate: 30,
+                            bitrateMax: 10000,
+                            bitrateMin: 5000
+                        }
+                    });
+                    // 青い枠の中に自分の顔を出す
+                    localTracks.videoTrack.play("local-player");
+                } catch (camError) {
+                    console.log("カメラ/マイクが見つかりませんが、視聴専用モードで続行します。");
+                }
+
+                // 2. 通信ルームに入る
+                await client.join(APP_ID, CHANNEL, TOKEN, null);
+                
+                // カメラが取得できた場合のみ、相手に自分の映像を送る
+                if (localTracks.videoTrack) {
+                    await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
+                }
+                
+                document.getElementById("join-btn").innerText = "配信＆表示中！";
+
+            } catch (error) {
+                console.error(error);
+                alert("通信エラー: " + error.message);
+                document.getElementById("join-btn").disabled = false;
+                document.getElementById("join-btn").innerText = "スタート！";
+            }
+        };
+
+        // 3. 相手の映像が来たら表示
+        client.on("user-published", async (user, mediaType) => {
+            await client.subscribe(user, mediaType);
+            if (mediaType === "video") {
+                // 赤い枠の中に相手の映像を出す
+                user.videoTrack.play("remote-player");
+            }
+            if (mediaType === "audio") {
+                user.audioTrack.play();
+            }
+        });
+    </script>
+</body>
+</html>
