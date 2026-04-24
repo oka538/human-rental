@@ -1,126 +1,166 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
     <meta charset="UTF-8">
-    <title>Avatar Trip: Mirror Test</title>
+    <title>Avatar Trip: VR Final (Perfect Pivot)</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+    
+    <script>
+        // 黒帯切り落とし
+        AFRAME.registerComponent('crop-black-bar', {
+            tick: function () {
+                if (this.done) return;
+                var mesh = this.el.getObject3D('mesh');
+                if (mesh && mesh.material && mesh.material.map) {
+                    var map = mesh.material.map;
+                    map.offset.y = 160 / 1440; 
+                    map.repeat.y = 1280 / 1440;
+                    map.needsUpdate = true;
+                    this.done = true;
+                }
+            }
+        });
+
+        // 💡 究極の水平調整コンポーネント
+        AFRAME.registerComponent('horizon-adjust', {
+            schema: {
+                pitch: {type: 'number', default: 0},
+                yaw: {type: 'number', default: 0}, 
+                roll: {type: 'number', default: 0}
+            },
+            init: function () {
+                this.cameraEl = document.querySelector('a-camera');
+                this.updateRotation();
+
+                // Quest 3 スティック操作
+                const rightHand = document.querySelector('#right-hand');
+                if(rightHand) {
+                    rightHand.addEventListener('thumbstickmoved', (e) => {
+                        const x = e.detail.x; 
+                        const y = e.detail.y;
+                        if(Math.abs(x) > 0.1) this.data.yaw -= x * 2;
+                        if(Math.abs(y) > 0.1) this.data.pitch += y * 2;
+                        this.updateRotation();
+                    });
+                }
+            },
+            updateRotation: function() {
+                this.el.object3D.rotation.set(
+                    THREE.MathUtils.degToRad(this.data.pitch),
+                    THREE.MathUtils.degToRad(this.data.yaw),
+                    THREE.MathUtils.degToRad(this.data.roll)
+                );
+            },
+            tick: function () {
+                // 🔥 魔法のコード：毎フレーム、映像の中心を「実際の目の座標」にテレポートさせる
+                // これにより、回転軸が完全に「眼球」になり、絶対に振り回されなくなる。
+                if (this.cameraEl) {
+                    const camPos = new THREE.Vector3();
+                    this.cameraEl.object3D.getWorldPosition(camPos);
+                    this.el.object3D.position.copy(camPos);
+                }
+            }
+        });
+    </script>
+
     <style>
-        body { margin: 0; background: #222; color: white; font-family: sans-serif; text-align: center; }
-        
-        /* タイトルとボタンのエリア */
-        .header { padding: 20px; }
-        
-        /* 画面を左右に分けるレイアウト */
-        .container { 
-            display: flex; 
-            flex-direction: row;
-            justify-content: center; 
-            align-items: center; 
-            height: 70vh; /* 高さを調整 */
-            gap: 20px; 
-            padding: 20px;
+        #ui-layer {
+            position: absolute; z-index: 999; top: 20px; left: 20px;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; color: white;
+            font-family: sans-serif;
         }
-        
-        /* ビデオの枠 */
-        .video-box { 
-            width: 45%; 
-            height: 100%; 
-            border: 3px solid gray; 
-            position: relative; 
-            background: black;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        /* 自分のカメラ（青枠） */
-        #local-player { border-color: cyan; }
-        /* 相手のカメラ（赤枠） */
-        #remote-player { border-color: red; }
-
-        p { 
-            position: absolute; top: 10px; left: 10px; 
-            background: rgba(0,0,0,0.7); padding: 5px 10px; 
-            margin: 0; z-index: 10; border-radius: 5px;
-        }
+        button, select { font-size: 18px; padding: 10px; margin-top: 10px; cursor: pointer; border-radius: 5px; }
+        #recenter-btn { background: #555; color: white; border: none; }
     </style>
 </head>
-
 <body>
-    <div class="header">
-        <h1>🎥 カメラ通信テスト</h1>
-        <button id="join-btn" style="font-size:20px; padding:10px 30px; cursor: pointer;">スタート！</button>
-    </div>
 
-    <div class="container">
-        <div id="local-player" class="video-box">
-            <p>🔵 自分のカメラ (Mac)</p>
-        </div>
+    <a-scene antialias="true">
+        <a-assets>
+            <video id="vr-video" autoplay playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+            <img id="floor-logo" src="https://upload.wikimedia.org/wikipedia/commons/a/a7/Blank_portrait%2C_male_%28solid_blue%29.svg">
+        </a-assets>
 
-        <div id="remote-player" class="video-box">
-            <p>🔴 相手のカメラ (スマホ)</p>
-        </div>
+        <a-entity id="vr-world" horizon-adjust>
+            <a-videosphere src="#vr-video" rotation="0 90 0" crop-black-bar material="shader: flat"></a-videosphere>
+            <a-image src="#floor-logo" position="0 -1.8 0" rotation="-90 0 0" radius="2" opacity="0.8"></a-image>
+        </a-entity>
+
+        <a-entity id="rig">
+            <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: true" wasd-controls-enabled="false">
+                <a-cursor color="yellow" fuse="true" timeout="1500"></a-cursor>
+            </a-camera>
+            <a-entity id="right-hand" oculus-touch-controls="hand: right"></a-entity>
+            <a-entity oculus-touch-controls="hand: left"></a-entity>
+        </a-entity>
+    </a-scene>
+
+    <div id="ui-layer">
+        <h2>🌍 Avatar Trip VR</h2>
+        <select id="device-mode">
+            <option value="pc">Mac (送信側)</option>
+            <option value="mobile" selected>スマホ (受信・VRゴーグル)</option>
+        </select><br>
+        <button id="join-btn">通信スタート！</button><br>
+        <button id="recenter-btn">視点をリセット</button>
+        <p id="status-text">待機中...</p>
     </div>
 
     <script>
         const APP_ID = '543aafbc0b32443a877636d728d9d0f9';
         const CHANNEL = 'test_channel';
-        const TOKEN = null;
-
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-        let localTracks = { videoTrack: null, audioTrack: null };
+        const videoElement = document.getElementById("vr-video"); 
+        const statusText = document.getElementById("status-text");
 
         document.getElementById("join-btn").onclick = async function () {
+            this.disabled = true;
+            const mode = document.getElementById("device-mode").value;
+            statusText.innerText = "接続中...";
+
             try {
-                // ボタンを連打できないようにする
-                document.getElementById("join-btn").disabled = true;
-                document.getElementById("join-btn").innerText = "起動中...";
+                let config = mode === "pc" ? { 
+    encoderConfig: { 
+        width: 1920, 
+        height: 1080, 
+        frameRate: 30, // 💡 ここもOBSに合わせて30にする
+        bitrateMax: 5000 // 💡 通信の詰まりを防ぐため、一旦15000から5000に落とす
+    },
+    // 💡 "detail"（画質優先）から "latency"（低遅延・速度優先）に変更！
+    optimizationMode: "latency" 
+} : {};
+                let localVideoTrack = await AgoraRTC.createCameraVideoTrack(config);
 
-                // 1. 自分のカメラを取得（★エラーが起きても止まらないように安全装置を追加！）
-                try {
-                    localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-                    localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack({
-                        encoderConfig: {
-                            width: { ideal: 2880 },
-                            height: { ideal: 1440 },
-                            frameRate: 30,
-                            bitrateMax: 10000,
-                            bitrateMin: 5000
-                        }
-                    });
-                    // 青い枠の中に自分の顔を出す
-                    localTracks.videoTrack.play("local-player");
-                } catch (camError) {
-                    console.log("カメラ/マイクが見つかりませんが、視聴専用モードで続行します。");
+                if (mode === "pc") {
+                    videoElement.srcObject = new MediaStream([localVideoTrack.getMediaStreamTrack()]);
+                    videoElement.onloadedmetadata = () => { videoElement.play(); };
                 }
 
-                // 2. 通信ルームに入る
-                await client.join(APP_ID, CHANNEL, TOKEN, null);
-                
-                // カメラが取得できた場合のみ、相手に自分の映像を送る
-                if (localTracks.videoTrack) {
-                    await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
-                }
-                
-                document.getElementById("join-btn").innerText = "配信＆表示中！";
+                await client.join(APP_ID, CHANNEL, null, null);
+                await client.publish([localVideoTrack]);
+                statusText.innerText = "通信成功！VRアイコンを押してね！";
 
-            } catch (error) {
-                console.error(error);
-                alert("通信エラー: " + error.message);
-                document.getElementById("join-btn").disabled = false;
-                document.getElementById("join-btn").innerText = "スタート！";
+            } catch (e) {
+                statusText.innerText = "エラー: " + e.message;
+                this.disabled = false;
             }
         };
 
-        // 3. 相手の映像が来たら表示
+        document.getElementById("recenter-btn").onclick = () => {
+            const cam = document.querySelector('a-camera');
+            cam.setAttribute('rotation', '0 0 0');
+            statusText.innerText = "視点をリセットしました。";
+        };
+
         client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
             if (mediaType === "video") {
-                // 赤い枠の中に相手の映像を出す
-                user.videoTrack.play("remote-player");
-            }
-            if (mediaType === "audio") {
-                user.audioTrack.play();
+                const mode = document.getElementById("device-mode").value;
+                if (mode === "mobile") {
+                    videoElement.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+                    videoElement.onloadedmetadata = () => { videoElement.play(); };
+                }
             }
         });
     </script>
